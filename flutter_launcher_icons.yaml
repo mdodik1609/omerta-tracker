@@ -1,0 +1,7 @@
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/omerta_icon.png"
+  adaptive_icon_background: "#232323"
+  adaptive_icon_foreground: "assets/omerta_icon.png"
+  remove_alpha_ios: true 

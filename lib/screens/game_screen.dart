@@ -3,10 +3,12 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/game.dart';
 import '../models/player.dart';
+import '../models/round.dart';
 import '../services/game_service.dart';
 import '../omerta_background.dart';
 import '../omerta_card.dart';
 import '../initials_avatar.dart';
+import 'package:uuid/uuid.dart';
 
 class GameScreen extends StatefulWidget {
   final Game game;
@@ -26,6 +28,13 @@ class _GameScreenState extends State<GameScreen> {
   void initState() {
     super.initState();
     _game = widget.game;
+    // No need to call loadGames; Hive auto-loads.
+  }
+
+  void _updateGame(Game updatedGame) {
+    setState(() {
+      _game = updatedGame;
+    });
   }
 
   @override
@@ -43,15 +52,14 @@ class _GameScreenState extends State<GameScreen> {
     }
     _scoreControllers.clear();
 
-    // Track selected winner
-    String? selectedWinnerId;
+    String? selectedWinner;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: const Color(0xFFD2B48C),
-          title: Text(
+          title: const Text(
             'New Round',
             style: TextStyle(
               fontFamily: 'OmertaFont',
@@ -62,36 +70,33 @@ class _GameScreenState extends State<GameScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Winner dropdown at the top
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE6D5C3),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: DropdownButton<String>(
-                    value: selectedWinnerId,
-                    isExpanded: true,
-                    underline: Container(),
-                    hint: const Text(
-                      'Select Winner (Optional)',
-                      style: TextStyle(
-                        fontFamily: 'OmertaFont',
-                        color: Colors.black54,
-                      ),
+                DropdownButtonFormField<String>(
+                  value: selectedWinner,
+                  decoration: InputDecoration(
+                    labelText: 'Winner',
+                    labelStyle: const TextStyle(
+                      fontFamily: 'OmertaFont',
+                      color: Colors.black54,
                     ),
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text(
-                          'No Winner',
-                          style: TextStyle(
-                            fontFamily: 'OmertaFont',
-                            color: Colors.black,
-                          ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFE6D5C3),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text(
+                        'No Winner',
+                        style: TextStyle(
+                          fontFamily: 'OmertaFont',
+                          color: Colors.black,
                         ),
                       ),
-                      ..._game.players.map((player) => DropdownMenuItem<String>(
+                    ),
+                    ..._game.players.map((player) {
+                      return DropdownMenuItem(
                         value: player.id,
                         child: Text(
                           player.name,
@@ -100,17 +105,16 @@ class _GameScreenState extends State<GameScreen> {
                             color: Colors.black,
                           ),
                         ),
-                      )).toList(),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        selectedWinnerId = value;
-                      });
-                    },
-                  ),
+                      );
+                    }).toList(),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      selectedWinner = value;
+                    });
+                  },
                 ),
                 const SizedBox(height: 16),
-                // Score inputs
                 ..._game.players.map((player) {
                   final controller = TextEditingController();
                   _scoreControllers[player.id] = controller;
@@ -122,7 +126,10 @@ class _GameScreenState extends State<GameScreen> {
                           child: Row(
                             children: [
                               InitialsAvatar(
-                                player.name.split(' ').map((e) => e[0]).join(''),
+                                player.name
+                                    .split(' ')
+                                    .map((e) => e[0])
+                                    .join(''),
                                 radius: 16,
                               ),
                               const SizedBox(width: 8),
@@ -168,96 +175,65 @@ class _GameScreenState extends State<GameScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  fontFamily: 'OmertaFont',
-                  color: Colors.black54,
-                ),
-              ),
+              child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
+                // Validate all score fields
+                bool allFieldsValid = true;
+                for (var player in _game.players) {
+                  final controller = _scoreControllers[player.id];
+                  if (controller == null || controller.text.isEmpty) {
+                    allFieldsValid = false;
+                    break;
+                  }
+                  final score = int.tryParse(controller.text);
+                  if (score == null) {
+                    allFieldsValid = false;
+                    break;
+                  }
+                }
+
+                if (!allFieldsValid) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Please enter a valid number for all players',
+                        style: TextStyle(
+                          fontFamily: 'OmertaFont',
+                          color: Colors.white,
+                        ),
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                final gameService =
+                    Provider.of<GameService>(context, listen: false);
+                final round = Round(
+                  scores: {},
+                  winner: selectedWinner,
+                );
+
                 for (var player in _game.players) {
                   final controller = _scoreControllers[player.id];
                   if (controller != null && controller.text.isNotEmpty) {
                     final score = int.tryParse(controller.text) ?? 0;
-                    Provider.of<GameService>(context, listen: false)
-                        .updatePlayerScore(_game, player.id, score);
+                    round.scores[player.id] = score;
                   }
                 }
-                
-                // Update won games for the selected winner
-                if (selectedWinnerId != null) {
-                  Provider.of<GameService>(context, listen: false)
-                      .incrementWonGames(_game, selectedWinnerId!);
-                }
-                
-                setState(() {});
+
+                _game.addRound(round);
+                if (!mounted) return;
                 Navigator.pop(context);
+                this.setState(() {}); // Reload the parent widget
               },
-              child: const Text(
-                'Done',
-                style: TextStyle(
-                  fontFamily: 'OmertaFont',
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: const Text('Done'),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showRemovePlayerDialog(Player player) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFD2B48C),
-        title: Text(
-          'Remove Player',
-          style: TextStyle(
-            fontFamily: 'OmertaFont',
-            color: Colors.black,
-          ),
-        ),
-        content: Text(
-          'Are you sure you want to remove ${player.name}?',
-          style: const TextStyle(
-            fontFamily: 'OmertaFont',
-            color: Colors.black,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                fontFamily: 'OmertaFont',
-                color: Colors.black54,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Provider.of<GameService>(context, listen: false)
-                  .removePlayer(_game, player.id);
-              Navigator.pop(context);
-              setState(() {});
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text(
-              'Remove',
-              style: TextStyle(
-                fontFamily: 'OmertaFont',
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -293,9 +269,11 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
           TextButton(
-            onPressed: () {
-              Provider.of<GameService>(context, listen: false)
-                  .deleteGame(_game.id);
+            onPressed: () async {
+              final gameService =
+                  Provider.of<GameService>(context, listen: false);
+              await gameService.deleteGame(_game.id);
+              if (!mounted) return;
               Navigator.pop(context); // Close dialog
               Navigator.pop(context); // Return to home screen
             },
@@ -315,34 +293,52 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Sort players by score (ascending) and won games (descending)
-    final sortedPlayers = List<Player>.from(_game.players)
-      ..sort((a, b) {
-        if (a.score != b.score) {
-          return a.score.compareTo(b.score);
-        }
-        return b.wonGames.compareTo(a.wonGames);
-      });
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final padding = screenWidth * 0.04;
+    final cardRadius = screenWidth * 0.03;
+    final titleFontSize = screenWidth * 0.055;
+    final subtitleFontSize = screenWidth * 0.04;
+    final buttonFontSize = screenWidth * 0.045;
+    final chipFontSize = screenWidth * 0.04;
+    final inputFontSize = screenWidth * 0.042;
+    final verticalSpace = screenHeight * 0.015;
+    final horizontalSpace = screenWidth * 0.02;
+    final iconSize = screenWidth * 0.07;
+
+    final gameService = Provider.of<GameService>(context);
+
+    if (!gameService.isInitialized) {
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(
+            color: const Color(0xFFD2B48C),
+          ),
+        ),
+      );
+    }
 
     return OmertaBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-      appBar: AppBar(
+        appBar: AppBar(
           backgroundColor: const Color(0xFFD2B48C),
           title: Text(
             _game.name.isEmpty ? 'Game' : _game.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'OmertaFont',
               color: Colors.black,
+              fontSize: titleFontSize,
             ),
           ),
-        actions: [
-          IconButton(
+          actions: [
+            IconButton(
               icon: const Icon(Icons.edit, color: Colors.black),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
+              iconSize: iconSize,
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
                     backgroundColor: const Color(0xFFD2B48C),
                     title: const Text(
                       'Edit Game',
@@ -383,20 +379,15 @@ class _GameScreenState extends State<GameScreen> {
                               fillColor: const Color(0xFFE6D5C3),
                             ),
                             controller: TextEditingController(text: _game.name),
-                    onSubmitted: (value) {
-                      setState(() {
-                        _game = Game(
-                          id: _game.id,
-                          name: value,
-                          startTime: _game.startTime,
-                          players: _game.players,
-                          currentRound: _game.currentRound,
-                          isActive: _game.isActive,
-                          endTime: _game.endTime,
-                        );
-                      });
-                      Provider.of<GameService>(context, listen: false)
-                          .saveGame(_game);
+                            onSubmitted: (value) {
+                              setState(() {
+                                _game = Game(
+                                  id: _game.id,
+                                  name: value,
+                                  createdAt: _game.createdAt,
+                                  players: _game.players,
+                                );
+                              });
                             },
                           ),
                           const SizedBox(height: 24),
@@ -418,7 +409,10 @@ class _GameScreenState extends State<GameScreen> {
                               ),
                               child: ListTile(
                                 leading: InitialsAvatar(
-                                  player.name.split(' ').map((e) => e[0]).join(''),
+                                  player.name
+                                      .split(' ')
+                                      .map((e) => e[0])
+                                      .join(''),
                                   radius: 16,
                                 ),
                                 title: Text(
@@ -429,19 +423,21 @@ class _GameScreenState extends State<GameScreen> {
                                   ),
                                 ),
                                 subtitle: Text(
-                                  'Score: ${player.score} | Won: ${player.wonGames}',
+                                  'Score: ${_game.getPlayerTotalScores()[player.id]}',
                                   style: const TextStyle(
                                     fontFamily: 'OmertaFont',
                                     color: Colors.black54,
                                   ),
                                 ),
                                 trailing: IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
                                   onPressed: () {
                                     showDialog(
                                       context: context,
                                       builder: (context) => AlertDialog(
-                                        backgroundColor: const Color(0xFFD2B48C),
+                                        backgroundColor:
+                                            const Color(0xFFD2B48C),
                                         title: const Text(
                                           'Remove Player',
                                           style: TextStyle(
@@ -458,7 +454,8 @@ class _GameScreenState extends State<GameScreen> {
                                         ),
                                         actions: [
                                           TextButton(
-                                            onPressed: () => Navigator.pop(context),
+                                            onPressed: () =>
+                                                Navigator.pop(context),
                                             child: const Text(
                                               'Cancel',
                                               style: TextStyle(
@@ -469,13 +466,14 @@ class _GameScreenState extends State<GameScreen> {
                                           ),
                                           TextButton(
                                             onPressed: () {
-                                              Provider.of<GameService>(context, listen: false)
-                                                  .removePlayer(_game, player.id);
-                                              Navigator.pop(context); // Close confirmation dialog
-                                              Navigator.pop(context); // Close edit dialog
+                                              Navigator.pop(
+                                                  context); // Close confirmation dialog
+                                              Navigator.pop(
+                                                  context); // Close edit dialog
                                               setState(() {});
                                             },
-                                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                            style: TextButton.styleFrom(
+                                                foregroundColor: Colors.red),
                                             child: const Text(
                                               'Remove',
                                               style: TextStyle(
@@ -508,189 +506,318 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       ),
                     ],
-                ),
-              );
-            },
-          ),
+                  ),
+                );
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.black),
+              iconSize: iconSize,
               onPressed: _showDeleteGameDialog,
             ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Started: ${_dateFormat.format(_game.startTime)}',
-                style: const TextStyle(
+          ],
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.all(padding),
+              child: Text(
+                'Started: ${_dateFormat.format(_game.createdAt)}',
+                style: TextStyle(
                   fontFamily: 'OmertaFont',
                   color: Colors.white,
+                  fontSize: inputFontSize,
                 ),
               ),
-          ),
-          Expanded(
-            child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card(
-                    color: const Color(0xFFD2B48C),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                          Text(
-                            'Leaderboard',
-                            style: TextStyle(
-                              fontFamily: 'OmertaFont',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          ...sortedPlayers.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final player = entry.value;
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE6D5C3),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: ListTile(
-                                leading: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFD2B48C),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          '${index + 1}',
-                                          style: const TextStyle(
-                                            fontFamily: 'OmertaFont',
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    InitialsAvatar(
-                                      player.name.split(' ').map((e) => e[0]).join(''),
-                                      radius: 16,
-                                    ),
-                                  ],
-                                ),
-                                title: Text(
-                                  player.name,
-                                  style: const TextStyle(
-                                    fontFamily: 'OmertaFont',
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  'Won: ${player.wonGames}',
-                                  style: const TextStyle(
-                                    fontFamily: 'OmertaFont',
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                                trailing: Text(
-                                  '${player.score}',
-                                  style: const TextStyle(
-                                    fontFamily: 'OmertaFont',
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ),
-                    );
-                  }).toList(),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Card(
-                    color: const Color(0xFFD2B48C),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Round Scores',
-                            style: TextStyle(
-                              fontFamily: 'OmertaFont',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                      ...sortedPlayers.map((player) {
-                        return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Row(
-                            children: [
-                                  InitialsAvatar(
-                                    player.name.split(' ').map((e) => e[0]).join(''),
-                                    radius: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                              Expanded(
-                                    child: Text(
-                                      player.name,
-                                      style: const TextStyle(
-                                        fontFamily: 'OmertaFont',
-                                        color: Colors.black,
-                                      ),
-                                    ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  player.roundScores.join(' - '),
-                                      style: const TextStyle(
-                                        fontFamily: 'OmertaFont',
-                                        color: Colors.black,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ],
-                      ),
-                  ),
-                ),
-              ],
             ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.all(padding),
+                children: [
+                  _buildLeaderboard(
+                    titleFontSize: titleFontSize,
+                    subtitleFontSize: subtitleFontSize,
+                    cardRadius: cardRadius,
+                    padding: padding,
+                  ),
+                  SizedBox(height: verticalSpace * 2),
+                  _buildRoundScores(
+                    titleFontSize: titleFontSize,
+                    subtitleFontSize: subtitleFontSize,
+                    cardRadius: cardRadius,
+                    padding: padding,
+                    inputFontSize: inputFontSize,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
           backgroundColor: const Color(0xFFD2B48C),
-        onPressed: _showNewRoundDialog,
-          child: const Icon(Icons.add, color: Colors.black),
+          onPressed: _showNewRoundDialog,
+          child: Icon(Icons.add, color: Colors.black, size: iconSize),
         ),
       ),
     );
   }
-} 
+
+  Widget _buildLeaderboard({
+    required double titleFontSize,
+    required double subtitleFontSize,
+    required double cardRadius,
+    required double padding,
+  }) {
+    final sortedPlayers = _game.getSortedPlayers();
+    final totalScores = _game.getPlayerTotalScores();
+    final wins = _game.getPlayerWins();
+
+    return Card(
+      color: const Color(0xFFD2B48C),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(cardRadius),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(padding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Leaderboard',
+              style: TextStyle(
+                fontFamily: 'OmertaFont',
+                fontSize: titleFontSize,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+            SizedBox(height: padding),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final totalWidth = constraints.maxWidth;
+                final columnWidth =
+                    totalWidth / 4; // Divide into 4 equal columns
+
+                return DataTable(
+                  headingTextStyle: const TextStyle(
+                    fontFamily: 'OmertaFont',
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  dataTextStyle: const TextStyle(
+                    fontFamily: 'OmertaFont',
+                    color: Colors.black,
+                  ),
+                  columnSpacing: 0,
+                  horizontalMargin: 0,
+                  columns: [
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidth,
+                        child: const Text(
+                          '#',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidth,
+                        child: const Text(
+                          'Player',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidth,
+                        child: const Text(
+                          'Total',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidth,
+                        child: const Text(
+                          'Wins',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ],
+                  rows: sortedPlayers.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final player = entry.value;
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          SizedBox(
+                            width: columnWidth,
+                            child: Text(
+                              '${index + 1}',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: columnWidth,
+                            child: Text(
+                              player.name,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: columnWidth,
+                            child: Text(
+                              (totalScores[player.id] ?? 0).toString(),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: columnWidth,
+                            child: Text(
+                              (wins[player.id] ?? 0).toString(),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoundScores({
+    required double titleFontSize,
+    required double subtitleFontSize,
+    required double cardRadius,
+    required double padding,
+    required double inputFontSize,
+  }) {
+    final roundScores = _game.getPlayerRoundScores();
+
+    return Card(
+      color: const Color(0xFFD2B48C),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(cardRadius),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(padding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Round Scores',
+                  style: TextStyle(
+                    fontFamily: 'OmertaFont',
+                    fontSize: titleFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                Text(
+                  'Total Rounds: ${_game.rounds.length}',
+                  style: TextStyle(
+                    fontFamily: 'OmertaFont',
+                    fontSize: inputFontSize,
+                    color: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: padding),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final availableWidth = constraints.maxWidth;
+                final playerColumnWidth = 100.0;
+                final scoresColumnWidth = availableWidth -
+                    playerColumnWidth -
+                    8; // 8 for column spacing
+
+                return DataTable(
+                  headingTextStyle: const TextStyle(
+                    fontFamily: 'OmertaFont',
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  dataTextStyle: const TextStyle(
+                    fontFamily: 'OmertaFont',
+                    color: Colors.black,
+                  ),
+                  horizontalMargin: 0,
+                  columnSpacing: 8,
+                  columns: [
+                    DataColumn(
+                      label: SizedBox(
+                        width: playerColumnWidth,
+                        child: const Text(
+                          'Player',
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: scoresColumnWidth,
+                        child: const Text(
+                          'Scores',
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ),
+                  ],
+                  rows: _game.players.map((player) {
+                    final playerScores = roundScores[player.id] ?? [];
+                    final scoresText = playerScores
+                        .map((score) => score.toString().padLeft(3, ' '))
+                        .join(' - ');
+
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          SizedBox(
+                            width: playerColumnWidth,
+                            child: Text(
+                              player.name,
+                              textAlign: TextAlign.left,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: scoresColumnWidth,
+                            child: Text(
+                              scoresText,
+                              softWrap: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

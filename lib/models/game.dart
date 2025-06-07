@@ -1,45 +1,107 @@
+import 'package:hive/hive.dart';
 import 'player.dart';
+import 'round.dart';
 
-class Game {
-  final String id;
-  final String name;
-  final DateTime startTime;
-  DateTime? endTime;
+part 'game.g.dart';
+
+@HiveType(typeId: 0)
+class Game extends HiveObject {
+  @HiveField(0)
+  String id;
+
+  @HiveField(1)
+  String name;
+
+  @HiveField(2)
+  DateTime createdAt;
+
+  @HiveField(3)
   List<Player> players;
-  int currentRound;
-  bool isActive;
+
+  @HiveField(4)
+  List<Round> rounds;
 
   Game({
     required this.id,
-    required this.startTime,
+    required this.name,
+    required this.createdAt,
     required this.players,
-    this.name = '',
-    this.currentRound = 1,
-    this.isActive = true,
-    this.endTime,
-  });
+    List<Round>? rounds,
+  }) : rounds = rounds ?? [];
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'startTime': startTime.toIso8601String(),
-      'endTime': endTime?.toIso8601String(),
-      'players': players.map((p) => p.toJson()).toList(),
-      'currentRound': currentRound,
-      'isActive': isActive,
-    };
+  void addRound(Round round) {
+    rounds.add(round);
+    save();
   }
 
-  factory Game.fromJson(Map<String, dynamic> json) {
-    return Game(
-      id: json['id'],
-      name: json['name'] ?? '',
-      startTime: DateTime.parse(json['startTime']),
-      endTime: json['endTime'] != null ? DateTime.parse(json['endTime']) : null,
-      players: (json['players'] as List).map((p) => Player.fromJson(p)).toList(),
-      currentRound: json['currentRound'],
-      isActive: json['isActive'],
-    );
+  void updatePlayerScore(String playerId, int roundIndex, int score) {
+    if (roundIndex >= rounds.length) {
+      rounds.add(Round(scores: {}));
+    }
+    rounds[roundIndex].scores[playerId] = score;
+    save();
   }
-} 
+
+  Map<String, int> getPlayerTotalScores() {
+    Map<String, int> totals = {};
+    for (var player in players) {
+      totals[player.id] = 0;
+    }
+    for (var round in rounds) {
+      for (var player in players) {
+        totals[player.id] =
+            (totals[player.id] ?? 0) + round.getScore(player.id).toInt();
+      }
+    }
+    return totals;
+  }
+
+  Map<String, int> getPlayerWins() {
+    Map<String, int> wins = {};
+    for (var player in players) {
+      wins[player.id] = 0;
+    }
+
+    for (var round in rounds) {
+      final winnerId = round.winner;
+      if (winnerId != null && winnerId.isNotEmpty) {
+        wins[winnerId] = (wins[winnerId] ?? 0) + 1;
+      }
+    }
+    return wins;
+  }
+
+  List<Player> getSortedPlayers() {
+    final totalScores = getPlayerTotalScores();
+    final wins = getPlayerWins();
+
+    return List<Player>.from(players)
+      ..sort((a, b) {
+        final scoreA = totalScores[a.id] ?? 0;
+        final scoreB = totalScores[b.id] ?? 0;
+
+        if (scoreA != scoreB) {
+          return scoreA.compareTo(scoreB); // Lower score is better
+        }
+
+        // If scores are equal, compare wins (more wins is better)
+        final winsA = wins[a.id] ?? 0;
+        final winsB = wins[b.id] ?? 0;
+        return winsB.compareTo(winsA); // Higher wins is better
+      });
+  }
+
+  Map<String, List<int>> getPlayerRoundScores() {
+    Map<String, List<int>> roundScores = {};
+    for (var player in players) {
+      roundScores[player.id] = List.filled(rounds.length, 0);
+    }
+
+    for (var i = 0; i < rounds.length; i++) {
+      rounds[i].scores.forEach((playerId, score) {
+        roundScores[playerId]?[i] = score;
+      });
+    }
+    return roundScores;
+  }
+}

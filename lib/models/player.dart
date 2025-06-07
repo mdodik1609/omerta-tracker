@@ -1,25 +1,29 @@
-class Player {
-  final String id;
-  final String name;
-  int score;
-  List<int> roundScores;
-  int wonGames;
+import 'package:hive/hive.dart';
+
+part 'player.g.dart';
+
+@HiveType(typeId: 1)
+class Player extends HiveObject {
+  @HiveField(0)
+  String id;
+
+  @HiveField(1)
+  String name;
+
+  @HiveField(2)
+  String? avatar;
 
   Player({
     required this.id,
     required this.name,
-    this.score = 0,
-    List<int>? roundScores,
-    this.wonGames = 0,
-  }) : roundScores = roundScores ?? [];
+    this.avatar,
+  });
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
-      'score': score,
-      'roundScores': roundScores,
-      'wonGames': wonGames,
+      'avatar': avatar,
     };
   }
 
@@ -27,9 +31,7 @@ class Player {
     return Player(
       id: json['id'],
       name: json['name'],
-      score: json['score'],
-      roundScores: List<int>.from(json['roundScores']),
-      wonGames: json['wonGames'] ?? 0,
+      avatar: json['avatar'],
     );
   }
 } 

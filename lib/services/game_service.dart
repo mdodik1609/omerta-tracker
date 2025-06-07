@@ -1,97 +1,145 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:flutter/foundation.dart';
 import '../models/game.dart';
 import '../models/player.dart';
+import '../models/round.dart';
 
-class GameService {
-  static const String _gamesKey = 'games';
+class GameService extends ChangeNotifier {
+  Box<Game>? _gamesBox;
+  Game? _currentGame;
   final _uuid = Uuid();
+  bool _isInitialized = false;
+  String? _error;
+  bool _isLoading = true;
 
-  Future<List<Game>> getGames() async {
-    final prefs = await SharedPreferences.getInstance();
-    final gamesJson = prefs.getStringList(_gamesKey) ?? [];
-    return gamesJson
-        .map((json) => Game.fromJson(jsonDecode(json)))
-        .toList();
+  GameService() {
+    init();
   }
 
-  Future<void> saveGame(Game game) async {
-    final prefs = await SharedPreferences.getInstance();
-    final games = await getGames();
-    
-    final gameIndex = games.indexWhere((g) => g.id == game.id);
-    if (gameIndex >= 0) {
-      games[gameIndex] = game;
-    } else {
-      games.add(game);
+  Future<void> init() async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      _gamesBox = await Hive.openBox<Game>('games');
+      _isInitialized = true;
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error initializing GameService: $e';
+      _isLoading = false;
+      print(_error);
+      notifyListeners();
+    }
+  }
+
+  bool get isInitialized => _isInitialized;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+  Game? get currentGame => _currentGame;
+  List<Game> get games =>
+      _isInitialized && _gamesBox != null ? _gamesBox!.values.toList() : [];
+
+  Future<void> createGame(String name, List<Player> players) async {
+    if (!_isInitialized || _gamesBox == null) {
+      throw Exception('GameService not initialized');
     }
 
-    final gamesJson = games
-        .map((game) => jsonEncode(game.toJson()))
-        .toList();
-    
-    await prefs.setStringList(_gamesKey, gamesJson);
-  }
-
-  Future<Game> createNewGame(List<String> playerNames, {String name = ''}) async {
-    final players = playerNames
-        .map((name) => Player(
-              id: _uuid.v4(),
-              name: name,
-            ))
-        .toList();
-
-    final game = Game(
-      id: _uuid.v4(),
-      name: name,
-      startTime: DateTime.now(),
-      players: players,
-    );
-
-    await saveGame(game);
-    return game;
-  }
-
-  Future<void> updatePlayerScore(Game game, String playerId, int roundScore) async {
-    final player = game.players.firstWhere((p) => p.id == playerId);
-    player.roundScores.add(roundScore);
-    player.score += roundScore;
-    
-    // If score is 0, increment won games
-    if (roundScore == 0) {
-      player.wonGames++;
+    try {
+      final game = Game(
+        id: _uuid.v4(),
+        name: name,
+        createdAt: DateTime.now(),
+        players: players,
+      );
+      await _gamesBox!.put(game.id, game);
+      _currentGame = game;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error creating game: $e';
+      notifyListeners();
+      throw Exception(_error);
     }
-    
-    await saveGame(game);
   }
 
-  Future<void> incrementWonGames(Game game, String playerId) async {
-    final player = game.players.firstWhere((p) => p.id == playerId);
-    player.wonGames++;
-    await saveGame(game);
+  Future<void> updatePlayerScore(
+      String playerId, int roundIndex, int score) async {
+    if (!_isInitialized || _currentGame == null || _gamesBox == null) {
+      throw Exception('GameService not initialized or no current game');
+    }
+
+    try {
+      _currentGame!.updatePlayerScore(playerId, roundIndex, score);
+      await _currentGame!.save();
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error updating score: $e';
+      notifyListeners();
+      throw Exception(_error);
+    }
   }
 
-  Future<void> removePlayer(Game game, String playerId) async {
-    game.players.removeWhere((p) => p.id == playerId);
-    await saveGame(game);
+  Future<void> addRound(Round round) async {
+    if (!_isInitialized || _currentGame == null || _gamesBox == null) {
+      throw Exception('GameService not initialized or no current game');
+    }
+
+    try {
+      _currentGame!.addRound(round);
+      await _currentGame!.save();
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error adding round: $e';
+      notifyListeners();
+      throw Exception(_error);
+    }
   }
 
-  Future<void> endGame(Game game) async {
-    game.isActive = false;
-    game.endTime = DateTime.now();
-    await saveGame(game);
+  Future<void> loadGame(String gameId) async {
+    if (!_isInitialized || _gamesBox == null) {
+      throw Exception('GameService not initialized');
+    }
+
+    try {
+      final game = _gamesBox!.get(gameId);
+      if (game != null) {
+        _currentGame = game;
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = 'Error loading game: $e';
+      notifyListeners();
+      throw Exception(_error);
+    }
   }
 
   Future<void> deleteGame(String gameId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final games = await getGames();
-    games.removeWhere((game) => game.id == gameId);
-    
-    final gamesJson = games
-        .map((game) => jsonEncode(game.toJson()))
-        .toList();
-    
-    await prefs.setStringList(_gamesKey, gamesJson);
+    if (!_isInitialized || _gamesBox == null) {
+      throw Exception('GameService not initialized');
+    }
+
+    try {
+      await _gamesBox!.delete(gameId);
+      if (_currentGame?.id == gameId) {
+        _currentGame = null;
+      }
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error deleting game: $e';
+      notifyListeners();
+      throw Exception(_error);
+    }
   }
-} 
+
+  Map<String, int> getCurrentGameScores() {
+    if (!_isInitialized || _currentGame == null) return {};
+    return _currentGame!.getPlayerTotalScores();
+  }
+
+  void clearCurrentGame() {
+    _currentGame = null;
+    notifyListeners();
+  }
+}

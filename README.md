@@ -2,6 +2,10 @@
 
 A Flutter application for tracking scores in the card game Omerta. The app allows you to create game sessions, add players, track scores, and manage game history.
 
+Current Version: v1.0.0
+
+[View Changelog](CHANGELOG.md)
+
 ## Prerequisites
 
 - Flutter SDK (latest stable version)
