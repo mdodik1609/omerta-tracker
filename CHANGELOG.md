@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 22/06/2025
+
+### Added
+- Game rule enforcement: Winners must have a score of 0
+- Enhanced player removal functionality with proper data cleanup
+- Improved round score display with better formatting
+- Better UI responsiveness and text handling
+- Enhanced error handling for game operations
+
+### Fixed
+- Player removal now properly removes players from the game and cleans up their data
+- Fixed score input clearing when changing winner selection in new round dialog
+- Improved AppBar title display to prevent text trimming
+- Enhanced validation messages with better user feedback
+- Fixed game name editing functionality
+
+### Changed
+- Updated round score display to show all rounds with improved formatting
+- Enhanced dialog layouts and user experience
+- Improved error handling and validation feedback
+- Better text overflow handling in UI components
+
 ## [1.0.0] - 07/06/2025
 
 ### Added

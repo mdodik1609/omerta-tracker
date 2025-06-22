@@ -97,6 +97,22 @@ class GameService extends ChangeNotifier {
     }
   }
 
+  Future<void> removePlayer(String playerId) async {
+    if (!_isInitialized || _currentGame == null || _gamesBox == null) {
+      throw Exception('GameService not initialized or no current game');
+    }
+
+    try {
+      _currentGame!.removePlayer(playerId);
+      await _currentGame!.save();
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error removing player: $e';
+      notifyListeners();
+      throw Exception(_error);
+    }
+  }
+
   Future<void> loadGame(String gameId) async {
     if (!_isInitialized || _gamesBox == null) {
       throw Exception('GameService not initialized');
