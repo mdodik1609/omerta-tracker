@@ -52,6 +52,11 @@ class _GameScreenState extends State<GameScreen> {
     }
     _scoreControllers.clear();
 
+    // Create controllers for all players
+    for (var player in _game.players) {
+      _scoreControllers[player.id] = TextEditingController();
+    }
+
     String? selectedWinner;
 
     showDialog(
@@ -116,8 +121,7 @@ class _GameScreenState extends State<GameScreen> {
                 ),
                 const SizedBox(height: 16),
                 ..._game.players.map((player) {
-                  final controller = TextEditingController();
-                  _scoreControllers[player.id] = controller;
+                  final controller = _scoreControllers[player.id]!;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Row(
@@ -208,6 +212,28 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   );
                   return;
+                }
+
+                // Validate that winner has score of 0
+                if (selectedWinner != null) {
+                  final winnerController = _scoreControllers[selectedWinner];
+                  final winnerScore =
+                      int.tryParse(winnerController?.text ?? '');
+                  if (winnerScore != 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'The winner must have a score of 0',
+                          style: TextStyle(
+                            fontFamily: 'OmertaFont',
+                            color: Colors.white,
+                          ),
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
                 }
 
                 final gameService =
@@ -328,8 +354,10 @@ class _GameScreenState extends State<GameScreen> {
             style: TextStyle(
               fontFamily: 'OmertaFont',
               color: Colors.black,
-              fontSize: titleFontSize,
+              fontSize: 20,
             ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
           actions: [
             IconButton(
@@ -465,12 +493,41 @@ class _GameScreenState extends State<GameScreen> {
                                             ),
                                           ),
                                           TextButton(
-                                            onPressed: () {
+                                            onPressed: () async {
                                               Navigator.pop(
                                                   context); // Close confirmation dialog
                                               Navigator.pop(
                                                   context); // Close edit dialog
-                                              setState(() {});
+
+                                              // Actually remove the player
+                                              final gameService =
+                                                  Provider.of<GameService>(
+                                                      context,
+                                                      listen: false);
+                                              try {
+                                                await gameService
+                                                    .removePlayer(player.id);
+                                                // Update the local game reference
+                                                setState(() {
+                                                  _game =
+                                                      gameService.currentGame!;
+                                                });
+                                              } catch (e) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Error removing player: $e',
+                                                      style: const TextStyle(
+                                                        fontFamily:
+                                                            'OmertaFont',
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
                                             },
                                             style: TextButton.styleFrom(
                                                 foregroundColor: Colors.red),
@@ -709,6 +766,9 @@ class _GameScreenState extends State<GameScreen> {
     required double inputFontSize,
   }) {
     final roundScores = _game.getPlayerRoundScores();
+    final last5Rounds = _game.rounds.length > 5
+        ? _game.rounds.sublist(_game.rounds.length - 5)
+        : _game.rounds;
 
     return Card(
       color: const Color(0xFFD2B48C),
@@ -732,13 +792,14 @@ class _GameScreenState extends State<GameScreen> {
                     color: Colors.black,
                   ),
                 ),
-                Text(
-                  'Total Rounds: ${_game.rounds.length}',
-                  style: TextStyle(
-                    fontFamily: 'OmertaFont',
-                    fontSize: inputFontSize,
-                    color: Colors.black,
-                  ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.info_outline, color: Colors.black),
+                      onPressed: () => _showAllRoundsDialog(),
+                      tooltip: 'View all rounds',
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -777,14 +838,19 @@ class _GameScreenState extends State<GameScreen> {
                       label: SizedBox(
                         width: scoresColumnWidth,
                         child: const Text(
-                          'Scores',
+                          'Last 5 Scores',
                           textAlign: TextAlign.left,
                         ),
                       ),
                     ),
                   ],
                   rows: _game.players.map((player) {
-                    final playerScores = roundScores[player.id] ?? [];
+                    // Get scores for the last 5 rounds only
+                    final playerScores = <int>[];
+                    for (var round in last5Rounds) {
+                      playerScores.add(round.scores[player.id] ?? 0);
+                    }
+
                     final scoresText = playerScores
                         .map((score) => score.toString().padLeft(3, ' '))
                         .join(' - ');
@@ -805,7 +871,10 @@ class _GameScreenState extends State<GameScreen> {
                             width: scoresColumnWidth,
                             child: Text(
                               scoresText,
-                              softWrap: true,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                color: Colors.black,
+                              ),
                             ),
                           ),
                         ),
@@ -819,5 +888,143 @@ class _GameScreenState extends State<GameScreen> {
         ),
       ),
     );
+  }
+
+  void _showAllRoundsDialog() {
+    final roundScores = _game.getPlayerRoundScores();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFD2B48C),
+        title: const Text(
+          'All Round Scores',
+          style: TextStyle(
+            fontFamily: 'OmertaFont',
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ..._game.players.map((player) {
+                  final playerScores = roundScores[player.id] ?? [];
+
+                  // Group scores into chunks of 5
+                  final scoreChunks = <List<int>>[];
+                  for (int i = 0; i < playerScores.length; i += 5) {
+                    final end = (i + 5 < playerScores.length)
+                        ? i + 5
+                        : playerScores.length;
+                    scoreChunks.add(playerScores.sublist(i, end));
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Player header
+                        Row(
+                          children: [
+                            Text(
+                              player.name,
+                              style: const TextStyle(
+                                fontFamily: 'OmertaFont',
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Score rows (5 rounds per row)
+                        ...scoreChunks.map((scoreChunk) {
+                          final scoresText = scoreChunk
+                              .map((score) => score.toString().padLeft(3, ' '))
+                              .join(' | ');
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE6D5C3),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFD2B48C),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              scoresText,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                color: Colors.black,
+                                fontSize: 14,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(
+                fontFamily: 'OmertaFont',
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getPlayerAvatarColor(String playerId) {
+    // Use a hash function to generate consistent colors for each player
+    final hash = playerId.hashCode % 12;
+    switch (hash) {
+      case 0:
+        return const Color(0xFFE74C3C); // Red
+      case 1:
+        return const Color(0xFF3498DB); // Blue
+      case 2:
+        return const Color(0xFF2ECC71); // Green
+      case 3:
+        return const Color(0xFF9B59B6); // Purple
+      case 4:
+        return const Color(0xFFF39C12); // Orange
+      case 5:
+        return const Color(0xFF1ABC9C); // Teal
+      case 6:
+        return const Color(0xFFE91E63); // Pink
+      case 7:
+        return const Color(0xFF3F51B5); // Indigo
+      case 8:
+        return const Color(0xFF4CAF50); // Light Green
+      case 9:
+        return const Color(0xFFFF9800); // Amber
+      case 10:
+        return const Color(0xFF795548); // Brown
+      case 11:
+        return const Color(0xFF607D8B); // Blue Grey
+      default:
+        return const Color(0xFF9E9E9E); // Grey
+    }
   }
 }

@@ -34,6 +34,22 @@ class Game extends HiveObject {
     save();
   }
 
+  void removePlayer(String playerId) {
+    // Remove player from players list
+    players.removeWhere((player) => player.id == playerId);
+
+    // Remove player's scores from all rounds
+    for (var round in rounds) {
+      round.scores.remove(playerId);
+      // If this player was the winner of this round, clear the winner
+      if (round.winner == playerId) {
+        round.winner = null;
+      }
+    }
+
+    save();
+  }
+
   void updatePlayerScore(String playerId, int roundIndex, int score) {
     if (roundIndex >= rounds.length) {
       rounds.add(Round(scores: {}));
