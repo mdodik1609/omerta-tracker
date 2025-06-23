@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/game.dart';
-import '../models/player.dart';
 import '../models/round.dart';
 import '../services/game_service.dart';
 import '../omerta_background.dart';
-import '../omerta_card.dart';
 import '../initials_avatar.dart';
-import 'package:uuid/uuid.dart';
 
 class GameScreen extends StatefulWidget {
   final Game game;
@@ -235,9 +232,6 @@ class _GameScreenState extends State<GameScreen> {
                     return;
                   }
                 }
-
-                final gameService =
-                    Provider.of<GameService>(context, listen: false);
                 final round = Round(
                   scores: {},
                   winner: selectedWinner,
@@ -254,7 +248,7 @@ class _GameScreenState extends State<GameScreen> {
                 _game.addRound(round);
                 if (!mounted) return;
                 Navigator.pop(context);
-                this.setState(() {}); // Reload the parent widget
+                this.setState(() {});
               },
               child: const Text('Done'),
             ),
@@ -269,7 +263,7 @@ class _GameScreenState extends State<GameScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFFD2B48C),
-        title: Text(
+        title: const Text(
           'Delete Game',
           style: TextStyle(
             fontFamily: 'OmertaFont',
@@ -296,12 +290,13 @@ class _GameScreenState extends State<GameScreen> {
           ),
           TextButton(
             onPressed: () async {
+              final navigatorContext = context;
               final gameService =
-                  Provider.of<GameService>(context, listen: false);
+                  Provider.of<GameService>(navigatorContext, listen: false);
               await gameService.deleteGame(_game.id);
-              if (!mounted) return;
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Return to home screen
+              if (!navigatorContext.mounted) return;
+              Navigator.pop(navigatorContext); // Close dialog
+              Navigator.pop(navigatorContext); // Return to home screen
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text(
@@ -325,20 +320,17 @@ class _GameScreenState extends State<GameScreen> {
     final cardRadius = screenWidth * 0.03;
     final titleFontSize = screenWidth * 0.055;
     final subtitleFontSize = screenWidth * 0.04;
-    final buttonFontSize = screenWidth * 0.045;
-    final chipFontSize = screenWidth * 0.04;
     final inputFontSize = screenWidth * 0.042;
     final verticalSpace = screenHeight * 0.015;
-    final horizontalSpace = screenWidth * 0.02;
     final iconSize = screenWidth * 0.07;
 
     final gameService = Provider.of<GameService>(context);
 
     if (!gameService.isInitialized) {
-      return Scaffold(
+      return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(
-            color: const Color(0xFFD2B48C),
+            color: Color(0xFFD2B48C),
           ),
         ),
       );
@@ -351,7 +343,7 @@ class _GameScreenState extends State<GameScreen> {
           backgroundColor: const Color(0xFFD2B48C),
           title: Text(
             _game.name.isEmpty ? 'Game' : _game.name,
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'OmertaFont',
               color: Colors.black,
               fontSize: 20,
@@ -513,8 +505,11 @@ class _GameScreenState extends State<GameScreen> {
                                                       gameService.currentGame!;
                                                 });
                                               } catch (e) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
+                                                final messenger =
+                                                    ScaffoldMessenger.of(
+                                                        context);
+                                                if (!context.mounted) return;
+                                                messenger.showSnackBar(
                                                   SnackBar(
                                                     content: Text(
                                                       'Error removing player: $e',
@@ -765,7 +760,6 @@ class _GameScreenState extends State<GameScreen> {
     required double padding,
     required double inputFontSize,
   }) {
-    final roundScores = _game.getPlayerRoundScores();
     final last5Rounds = _game.rounds.length > 5
         ? _game.rounds.sublist(_game.rounds.length - 5)
         : _game.rounds;
@@ -807,7 +801,7 @@ class _GameScreenState extends State<GameScreen> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final availableWidth = constraints.maxWidth;
-                final playerColumnWidth = 100.0;
+                const playerColumnWidth = 100.0;
                 final scoresColumnWidth = availableWidth -
                     playerColumnWidth -
                     8; // 8 for column spacing
@@ -825,10 +819,10 @@ class _GameScreenState extends State<GameScreen> {
                   horizontalMargin: 0,
                   columnSpacing: 8,
                   columns: [
-                    DataColumn(
+                    const DataColumn(
                       label: SizedBox(
                         width: playerColumnWidth,
-                        child: const Text(
+                        child: Text(
                           'Player',
                           textAlign: TextAlign.left,
                         ),
@@ -993,38 +987,5 @@ class _GameScreenState extends State<GameScreen> {
         ],
       ),
     );
-  }
-
-  Color _getPlayerAvatarColor(String playerId) {
-    // Use a hash function to generate consistent colors for each player
-    final hash = playerId.hashCode % 12;
-    switch (hash) {
-      case 0:
-        return const Color(0xFFE74C3C); // Red
-      case 1:
-        return const Color(0xFF3498DB); // Blue
-      case 2:
-        return const Color(0xFF2ECC71); // Green
-      case 3:
-        return const Color(0xFF9B59B6); // Purple
-      case 4:
-        return const Color(0xFFF39C12); // Orange
-      case 5:
-        return const Color(0xFF1ABC9C); // Teal
-      case 6:
-        return const Color(0xFFE91E63); // Pink
-      case 7:
-        return const Color(0xFF3F51B5); // Indigo
-      case 8:
-        return const Color(0xFF4CAF50); // Light Green
-      case 9:
-        return const Color(0xFFFF9800); // Amber
-      case 10:
-        return const Color(0xFF795548); // Brown
-      case 11:
-        return const Color(0xFF607D8B); // Blue Grey
-      default:
-        return const Color(0xFF9E9E9E); // Grey
-    }
   }
 }
