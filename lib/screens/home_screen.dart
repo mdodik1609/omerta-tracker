@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import '../models/game.dart';
 import '../services/game_service.dart';
 import '../omerta_background.dart';
-import '../initials_avatar.dart';
 import 'game_screen.dart';
 import 'package:uuid/uuid.dart';
 import '../models/player.dart';
@@ -53,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startNewGame() async {
     if (_playerNames.isNotEmpty) {
-      final uuid = Uuid();
+      const uuid = Uuid();
       final players = _playerNames
           .map((name) => Player(id: uuid.v4(), name: name))
           .toList();
@@ -98,11 +96,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           TextButton(
             onPressed: () async {
+              final navigatorContext = context;
               final gameService =
-                  Provider.of<GameService>(context, listen: false);
+                  Provider.of<GameService>(navigatorContext, listen: false);
               await gameService.deleteGame(gameId);
-              if (!mounted) return;
-              Navigator.pop(context);
+              if (!navigatorContext.mounted) return;
+              Navigator.pop(navigatorContext);
               setState(() {});
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -154,8 +153,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(
-                      color: const Color(0xFFD2B48C),
+                    const CircularProgressIndicator(
+                      color: Color(0xFFD2B48C),
                     ),
                     SizedBox(height: verticalSpace),
                     Text(
