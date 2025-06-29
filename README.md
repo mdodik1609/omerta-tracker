@@ -2,7 +2,7 @@
 
 A Flutter application for tracking scores in the card game Omerta. The app allows you to create game sessions, add players, track scores, and manage game history.
 
-Current Version: v1.1.0
+Current Version: v1.2.0
 
 [View Changelog](CHANGELOG.md)
 
@@ -62,18 +62,25 @@ Then open the iOS project in Xcode and archive it.
    - Click "Done" to save the round
 
 ### Managing the Game
-- Edit game name using the edit button
-- Remove players using the edit button (now fully functional)
-- Delete the game using the delete button
+- **NEW**: Access game management options via the menu button (⋮) in the app bar
+- **NEW**: Edit last round functionality - modify scores and winner of the most recent round
+- Edit game name and manage players
+- Remove players using the edit game dialog
+- Delete the game when finished
 - View round scores history below the leaderboard
+- **NEW**: See total rounds played in the round scores section
 
 ### Game Features
 - Track scores for multiple players
 - Record winners for each round
-- **NEW**: Game rule enforcement - winners must have 0 score
-- **NEW**: Improved round score display with better formatting
-- **NEW**: Enhanced player removal functionality
-- **NEW**: Better UI responsiveness and text handling
+- **NEW**: Edit last round functionality with validation
+- **NEW**: Dropdown menu for game management
+- **NEW**: Total rounds counter display
+- **NEW**: Improved menu performance and design integration
+- Game rule enforcement - winners must have 0 score
+- Improved round score display with better formatting
+- Enhanced player removal functionality
+- Better UI responsiveness and text handling
 - View game history
 - Manage multiple game sessions
 - Persistent storage of game data
