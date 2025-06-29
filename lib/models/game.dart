@@ -58,6 +58,13 @@ class Game extends HiveObject {
     save();
   }
 
+  void updateLastRound(Round updatedRound) {
+    if (rounds.isNotEmpty) {
+      rounds[rounds.length - 1] = updatedRound;
+      save();
+    }
+  }
+
   Map<String, int> getPlayerTotalScores() {
     Map<String, int> totals = {};
     for (var player in players) {

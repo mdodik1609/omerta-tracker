@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 22/06/2025
+
+### Added
+- **Edit Last Round functionality**: Modify scores and winner of the most recent round
+- **Firefox-style dropdown menu**: Replaced separate action buttons with a unified menu system
+- **Total rounds counter**: Display total rounds played in the round scores section
+- **Improved menu performance**: Faster response times and better user experience
+- **Enhanced menu design**: Integrated with game's visual aesthetic and color scheme
+
+### Changed
+- **UI Layout**: Replaced three separate action buttons (edit, edit last round, delete) with a single menu button (⋮)
+- **Menu positioning**: Menu opens below the app bar header for better accessibility
+- **Menu styling**: Matches game's design with proper colors, borders, and typography
+- **Performance optimization**: Reduced widget rebuilding and improved responsiveness
+
+### Fixed
+- **Async gap warnings**: Resolved BuildContext usage across async operations
+- **Menu positioning**: Fixed menu placement to open correctly below the app bar
+- **Context safety**: Added proper mounted checks for async operations
+
+### Technical Improvements
+- **Code organization**: Extracted inline dialog code into separate methods
+- **Type safety**: Improved function calls and error handling
+- **Memory efficiency**: Better resource management and cleanup
+
 ## [1.1.0] - 22/06/2025
 
 ### Added

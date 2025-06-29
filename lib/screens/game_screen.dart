@@ -20,6 +20,7 @@ class _GameScreenState extends State<GameScreen> {
   late Game _game;
   final _dateFormat = DateFormat('MMM d, y HH:mm');
   final Map<String, TextEditingController> _scoreControllers = {};
+  final GlobalKey _menuButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -258,6 +259,441 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  void _showEditLastRoundDialog() {
+    // Check if there are any rounds to edit
+    if (_game.rounds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No rounds to edit',
+            style: TextStyle(
+              fontFamily: 'OmertaFont',
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Clear previous controllers
+    for (var controller in _scoreControllers.values) {
+      controller.dispose();
+    }
+    _scoreControllers.clear();
+
+    // Get the last round
+    final lastRound = _game.rounds.last;
+
+    // Create controllers for all players and pre-populate with current scores
+    for (var player in _game.players) {
+      final controller = TextEditingController(
+        text: (lastRound.scores[player.id] ?? 0).toString(),
+      );
+      _scoreControllers[player.id] = controller;
+    }
+
+    String? selectedWinner = lastRound.winner;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: const Color(0xFFD2B48C),
+          title: const Text(
+            'Edit Last Round',
+            style: TextStyle(
+              fontFamily: 'OmertaFont',
+              color: Colors.black,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedWinner,
+                  decoration: InputDecoration(
+                    labelText: 'Winner',
+                    labelStyle: const TextStyle(
+                      fontFamily: 'OmertaFont',
+                      color: Colors.black54,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFE6D5C3),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text(
+                        'No Winner',
+                        style: TextStyle(
+                          fontFamily: 'OmertaFont',
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    ..._game.players.map((player) {
+                      return DropdownMenuItem(
+                        value: player.id,
+                        child: Text(
+                          player.name,
+                          style: const TextStyle(
+                            fontFamily: 'OmertaFont',
+                            color: Colors.black,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      selectedWinner = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                ..._game.players.map((player) {
+                  final controller = _scoreControllers[player.id]!;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              InitialsAvatar(
+                                player.name
+                                    .split(' ')
+                                    .map((e) => e[0])
+                                    .join(''),
+                                radius: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                player.name,
+                                style: const TextStyle(
+                                  fontFamily: 'OmertaFont',
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(
+                              fontFamily: 'OmertaFont',
+                              color: Colors.black,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'Score',
+                              labelStyle: const TextStyle(
+                                fontFamily: 'OmertaFont',
+                                color: Colors.black54,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFE6D5C3),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                // Validate all score fields
+                bool allFieldsValid = true;
+                for (var player in _game.players) {
+                  final controller = _scoreControllers[player.id];
+                  if (controller == null || controller.text.isEmpty) {
+                    allFieldsValid = false;
+                    break;
+                  }
+                  final score = int.tryParse(controller.text);
+                  if (score == null) {
+                    allFieldsValid = false;
+                    break;
+                  }
+                }
+
+                if (!allFieldsValid) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Please enter a valid number for all players',
+                        style: TextStyle(
+                          fontFamily: 'OmertaFont',
+                          color: Colors.white,
+                        ),
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                // Validate that winner has score of 0
+                if (selectedWinner != null) {
+                  final winnerController = _scoreControllers[selectedWinner];
+                  final winnerScore =
+                      int.tryParse(winnerController?.text ?? '');
+                  if (winnerScore != 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'The winner must have a score of 0',
+                          style: TextStyle(
+                            fontFamily: 'OmertaFont',
+                            color: Colors.white,
+                          ),
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                }
+
+                // Create updated round
+                final updatedRound = Round(
+                  scores: {},
+                  winner: selectedWinner,
+                );
+
+                for (var player in _game.players) {
+                  final controller = _scoreControllers[player.id];
+                  if (controller != null && controller.text.isNotEmpty) {
+                    final score = int.tryParse(controller.text) ?? 0;
+                    updatedRound.scores[player.id] = score;
+                  }
+                }
+
+                // Update the last round
+                _game.updateLastRound(updatedRound);
+                if (!mounted) return;
+                Navigator.pop(context);
+                this.setState(() {});
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditGameDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFD2B48C),
+        title: const Text(
+          'Edit Game',
+          style: TextStyle(
+            fontFamily: 'OmertaFont',
+            color: Colors.black,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Game Name',
+                style: TextStyle(
+                  fontFamily: 'OmertaFont',
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                style: const TextStyle(
+                  fontFamily: 'OmertaFont',
+                  color: Colors.black,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Game Name',
+                  labelStyle: const TextStyle(
+                    fontFamily: 'OmertaFont',
+                    color: Colors.black54,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFE6D5C3),
+                ),
+                controller: TextEditingController(text: _game.name),
+                onSubmitted: (value) {
+                  setState(() {
+                    _game = Game(
+                      id: _game.id,
+                      name: value,
+                      createdAt: _game.createdAt,
+                      players: _game.players,
+                    );
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Players',
+                style: TextStyle(
+                  fontFamily: 'OmertaFont',
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ..._game.players.map((player) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE6D5C3),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListTile(
+                    leading: InitialsAvatar(
+                      player.name.split(' ').map((e) => e[0]).join(''),
+                      radius: 16,
+                    ),
+                    title: Text(
+                      player.name,
+                      style: const TextStyle(
+                        fontFamily: 'OmertaFont',
+                        color: Colors.black,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Score: ${_game.getPlayerTotalScores()[player.id]}',
+                      style: const TextStyle(
+                        fontFamily: 'OmertaFont',
+                        color: Colors.black54,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: const Color(0xFFD2B48C),
+                            title: const Text(
+                              'Remove Player',
+                              style: TextStyle(
+                                fontFamily: 'OmertaFont',
+                                color: Colors.black,
+                              ),
+                            ),
+                            content: Text(
+                              'Are you sure you want to remove ${player.name}? This action cannot be undone.',
+                              style: const TextStyle(
+                                fontFamily: 'OmertaFont',
+                                color: Colors.black,
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(
+                                    fontFamily: 'OmertaFont',
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  Navigator.pop(
+                                      context); // Close confirmation dialog
+                                  Navigator.pop(context); // Close edit dialog
+
+                                  // Actually remove the player
+                                  final gameService = Provider.of<GameService>(
+                                      context,
+                                      listen: false);
+                                  try {
+                                    await gameService.removePlayer(player.id);
+                                    // Update the local game reference
+                                    setState(() {
+                                      _game = gameService.currentGame!;
+                                    });
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Error removing player: $e',
+                                          style: const TextStyle(
+                                            fontFamily: 'OmertaFont',
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                                style: TextButton.styleFrom(
+                                    foregroundColor: Colors.red),
+                                child: const Text(
+                                  'Remove',
+                                  style: TextStyle(
+                                    fontFamily: 'OmertaFont',
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Done',
+              style: TextStyle(
+                fontFamily: 'OmertaFont',
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showDeleteGameDialog() {
     showDialog(
       context: context,
@@ -352,220 +788,18 @@ class _GameScreenState extends State<GameScreen> {
             maxLines: 1,
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.black),
-              iconSize: iconSize,
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    backgroundColor: const Color(0xFFD2B48C),
-                    title: const Text(
-                      'Edit Game',
-                      style: TextStyle(
-                        fontFamily: 'OmertaFont',
-                        color: Colors.black,
-                      ),
-                    ),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Game Name',
-                            style: TextStyle(
-                              fontFamily: 'OmertaFont',
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            style: const TextStyle(
-                              fontFamily: 'OmertaFont',
-                              color: Colors.black,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: 'Game Name',
-                              labelStyle: const TextStyle(
-                                fontFamily: 'OmertaFont',
-                                color: Colors.black54,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              filled: true,
-                              fillColor: const Color(0xFFE6D5C3),
-                            ),
-                            controller: TextEditingController(text: _game.name),
-                            onSubmitted: (value) {
-                              setState(() {
-                                _game = Game(
-                                  id: _game.id,
-                                  name: value,
-                                  createdAt: _game.createdAt,
-                                  players: _game.players,
-                                );
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 24),
-                          const Text(
-                            'Players',
-                            style: TextStyle(
-                              fontFamily: 'OmertaFont',
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ..._game.players.map((player) {
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE6D5C3),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: ListTile(
-                                leading: InitialsAvatar(
-                                  player.name
-                                      .split(' ')
-                                      .map((e) => e[0])
-                                      .join(''),
-                                  radius: 16,
-                                ),
-                                title: Text(
-                                  player.name,
-                                  style: const TextStyle(
-                                    fontFamily: 'OmertaFont',
-                                    color: Colors.black,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  'Score: ${_game.getPlayerTotalScores()[player.id]}',
-                                  style: const TextStyle(
-                                    fontFamily: 'OmertaFont',
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete,
-                                      color: Colors.red),
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        backgroundColor:
-                                            const Color(0xFFD2B48C),
-                                        title: const Text(
-                                          'Remove Player',
-                                          style: TextStyle(
-                                            fontFamily: 'OmertaFont',
-                                            color: Colors.black,
-                                          ),
-                                        ),
-                                        content: Text(
-                                          'Are you sure you want to remove ${player.name}? This action cannot be undone.',
-                                          style: const TextStyle(
-                                            fontFamily: 'OmertaFont',
-                                            color: Colors.black,
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(context),
-                                            child: const Text(
-                                              'Cancel',
-                                              style: TextStyle(
-                                                fontFamily: 'OmertaFont',
-                                                color: Colors.black54,
-                                              ),
-                                            ),
-                                          ),
-                                          TextButton(
-                                            onPressed: () async {
-                                              Navigator.pop(
-                                                  context); // Close confirmation dialog
-                                              Navigator.pop(
-                                                  context); // Close edit dialog
-
-                                              // Actually remove the player
-                                              final gameService =
-                                                  Provider.of<GameService>(
-                                                      context,
-                                                      listen: false);
-                                              try {
-                                                await gameService
-                                                    .removePlayer(player.id);
-                                                // Update the local game reference
-                                                setState(() {
-                                                  _game =
-                                                      gameService.currentGame!;
-                                                });
-                                              } catch (e) {
-                                                final messenger =
-                                                    ScaffoldMessenger.of(
-                                                        context);
-                                                if (!context.mounted) return;
-                                                messenger.showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      'Error removing player: $e',
-                                                      style: const TextStyle(
-                                                        fontFamily:
-                                                            'OmertaFont',
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                    backgroundColor: Colors.red,
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                            style: TextButton.styleFrom(
-                                                foregroundColor: Colors.red),
-                                            child: const Text(
-                                              'Remove',
-                                              style: TextStyle(
-                                                fontFamily: 'OmertaFont',
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          'Done',
-                          style: TextStyle(
-                            fontFamily: 'OmertaFont',
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
+            GestureDetector(
+              key: _menuButtonKey,
+              onTap: () {
+                _showCustomMenu(context);
               },
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.black),
-              iconSize: iconSize,
-              onPressed: _showDeleteGameDialog,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                child: const Icon(
+                  Icons.more_vert,
+                  color: Colors.black,
+                ),
+              ),
             ),
           ],
         ),
@@ -797,6 +1031,15 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ],
             ),
+            SizedBox(height: padding / 2),
+            Text(
+              'Total Rounds: ${_game.rounds.length}',
+              style: TextStyle(
+                fontFamily: 'OmertaFont',
+                fontSize: subtitleFontSize,
+                color: Colors.black54,
+              ),
+            ),
             SizedBox(height: padding),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -985,6 +1228,93 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showCustomMenu(BuildContext context) {
+    final RenderBox? button =
+        _menuButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (button == null) return;
+
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
+
+    // Position the menu below the button
+    final RelativeRect position = RelativeRect.fromLTRB(
+      buttonPosition.dx, // Left
+      buttonPosition.dy + button.size.height, // Top (below button)
+      overlay.size.width - buttonPosition.dx - button.size.width, // Right
+      0, // Bottom
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      color: const Color(0xFFD2B48C),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: Color(0xFF8B7355), width: 1),
+      ),
+      elevation: 8,
+      constraints: const BoxConstraints(
+        minWidth: 200,
+        maxWidth: 250,
+      ),
+      items: [
+        _buildMenuItem(
+          'edit_game',
+          Icons.edit,
+          'Edit Game',
+          Colors.black,
+          () => _showEditGameDialog(),
+        ),
+        _buildMenuItem(
+          'edit_last_round',
+          Icons.undo,
+          'Edit Last Round',
+          Colors.black,
+          () => _showEditLastRoundDialog(),
+        ),
+        _buildMenuItem(
+          'delete_game',
+          Icons.delete,
+          'Delete Game',
+          Colors.red,
+          () => _showDeleteGameDialog(),
+        ),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _buildMenuItem(
+    String value,
+    IconData icon,
+    String text,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return PopupMenuItem<String>(
+      value: value,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              text,
+              style: TextStyle(
+                fontFamily: 'OmertaFont',
+                color: color,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
